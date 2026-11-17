@@ -2,7 +2,7 @@
 
 **Evaluation and governance for AI agents.** AgentLedger runs the same evaluation suite against two versions of an agent and shows the exact trace, assertion and tool decision behind every regression.
 
-> **Status:** early development, following a 12-week roadmap (see below). The core demo runs on synthetic fixtures and needs no paid model API key.
+> **Status:** early development, following a 6-week roadmap (see below). The core demo runs on synthetic fixtures and needs no paid model API key.
 
 ## The problem
 
@@ -68,14 +68,14 @@ flowchart LR
 
 ## Roadmap
 
-| Weeks | Focus |
-|---|---|
-| 1–2 | Web, API and worker workspace with CI; roles, immutable agent versions, run storage |
-| 3–4 | Trace events, redaction and persistence; run detail APIs and trace waterfall |
-| 5–6 | Evaluation suites, fixture runner and assertions; version comparison and regressions |
-| 7–8 | Review inbox and audit trail for sensitive requests; budgets and bounded retries |
-| 9–10 | Security testing (untrusted trace text, isolation, redaction); instrumentation |
-| 11–12 | Release images, end-to-end tests, API docs and a reproducible demo |
+| Week | Focus | Status |
+|---|---|---|
+| Week 1 | **W01-01 + CI** — Scaffold pnpm workspace with web, api and worker packages, add shared run contract with valid and invalid fixture tests, add Compose stack for PostgreSQL and Redis | Planned |
+| Week 2 | **Runs & traces** — Add Fastify API with Prisma schema for workspaces and roles, add immutable agent versions, store runs linked to versions, add trace events with redaction | Planned |
+| Week 3 | **Run views** — Add run detail and trace endpoints, add run list, add trace waterfall | Planned |
+| Week 4 | **Evaluations** — Add evaluation suites and assertions, add fixture runner, compare agent versions, add regression view | Planned |
+| Week 5 | **Safety & limits** — Pause sensitive mock actions for approval, add review inbox and audit trail, enforce budgets and bounded retries | Planned |
+| Week 6 | **Release** — Instrument API and worker with OpenTelemetry, add recovery guide and provider settings, add release images, add end-to-end tests and API docs | Planned |
 
 ## Getting started
 
