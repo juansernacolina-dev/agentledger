@@ -79,4 +79,11 @@ flowchart LR
 
 ## Getting started
 
-Setup instructions will be added once the first packages are in place.
+Local PostgreSQL and Redis run with Docker Compose:
+
+```bash
+cp .env.example .env        # then set POSTGRES_PASSWORD
+docker compose up -d
+```
+
+See [`infra/README.md`](infra/README.md) for details. Setup for the apps will be added as they gain features.
