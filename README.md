@@ -87,3 +87,13 @@ docker compose up -d
 ```
 
 See [`infra/README.md`](infra/README.md) for details. Setup for the apps will be added as they gain features.
+
+Checks (the same ones CI runs on every push to `main` and every pull request):
+
+```bash
+pnpm install
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
