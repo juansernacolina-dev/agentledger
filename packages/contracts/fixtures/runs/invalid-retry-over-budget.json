@@ -1,0 +1,72 @@
+{
+  "contractVersion": 1,
+  "id": "run_supp0001",
+  "workspaceId": "ws_demo01",
+  "agent": {
+    "definitionId": "agt_support",
+    "versionId": "agv_support2",
+    "version": 2
+  },
+  "status": "succeeded",
+  "timingSource": "fixture",
+  "budget": {
+    "maxSteps": 8,
+    "maxDurationMs": 60000,
+    "maxRetries": 2
+  },
+  "createdAt": "2026-01-15T09:00:00.000Z",
+  "finishedAt": "2026-01-15T09:00:04.200Z",
+  "steps": [
+    {
+      "id": "step_supp000101",
+      "index": 0,
+      "kind": "model",
+      "name": "classify ticket",
+      "status": "ok",
+      "startOffsetMs": 0,
+      "durationMs": 820,
+      "attempt": 1
+    },
+    {
+      "id": "step_supp000102",
+      "index": 1,
+      "kind": "retrieval",
+      "name": "search help articles",
+      "status": "ok",
+      "startOffsetMs": 820,
+      "durationMs": 410,
+      "attempt": 1
+    },
+    {
+      "id": "step_supp000103",
+      "index": 2,
+      "kind": "tool",
+      "name": "lookup_order",
+      "status": "error",
+      "startOffsetMs": 1230,
+      "durationMs": 300,
+      "attempt": 1,
+      "error": "mock order service timed out"
+    },
+    {
+      "id": "step_supp000104",
+      "index": 3,
+      "kind": "tool",
+      "name": "lookup_order",
+      "status": "ok",
+      "startOffsetMs": 1530,
+      "durationMs": 270,
+      "attempt": 4
+    },
+    {
+      "id": "step_supp000105",
+      "index": 4,
+      "kind": "model",
+      "name": "draft reply",
+      "status": "ok",
+      "startOffsetMs": 1800,
+      "durationMs": 2400,
+      "attempt": 1
+    }
+  ]
+}

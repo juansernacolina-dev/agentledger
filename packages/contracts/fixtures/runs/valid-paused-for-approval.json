@@ -1,0 +1,50 @@
+{
+  "contractVersion": 1,
+  "id": "run_supp0002",
+  "workspaceId": "ws_demo01",
+  "agent": {
+    "definitionId": "agt_support",
+    "versionId": "agv_support2",
+    "version": 2
+  },
+  "status": "paused",
+  "timingSource": "fixture",
+  "budget": {
+    "maxSteps": 8,
+    "maxDurationMs": 60000,
+    "maxRetries": 2
+  },
+  "createdAt": "2026-01-15T09:00:00.000Z",
+  "steps": [
+    {
+      "id": "step_supp000201",
+      "index": 0,
+      "kind": "model",
+      "name": "classify ticket",
+      "status": "ok",
+      "startOffsetMs": 0,
+      "durationMs": 820,
+      "attempt": 1
+    },
+    {
+      "id": "step_supp000202",
+      "index": 1,
+      "kind": "retrieval",
+      "name": "search help articles",
+      "status": "ok",
+      "startOffsetMs": 820,
+      "durationMs": 410,
+      "attempt": 1
+    },
+    {
+      "id": "step_supp000203",
+      "index": 2,
+      "kind": "tool",
+      "name": "issue_refund",
+      "status": "pending_approval",
+      "startOffsetMs": 1230,
+      "durationMs": 0,
+      "attempt": 1
+    }
+  ]
+}
