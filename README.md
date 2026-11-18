@@ -70,7 +70,7 @@ flowchart LR
 
 | Week | Focus | Status |
 |---|---|---|
-| Week 1 | **W01-01 + CI** — Scaffold pnpm workspace with web, api and worker packages, add shared run contract with valid and invalid fixture tests, add Compose stack for PostgreSQL and Redis | Planned |
+| Week 1 | **W01-01 + CI** — Scaffold pnpm workspace with web, api and worker packages, add shared run contract with valid and invalid fixture tests, add Compose stack for PostgreSQL and Redis | ✅ Done |
 | Week 2 | **Runs & traces** — Add Fastify API with Prisma schema for workspaces and roles, add immutable agent versions, store runs linked to versions, add trace events with redaction | Planned |
 | Week 3 | **Run views** — Add run detail and trace endpoints, add run list, add trace waterfall | Planned |
 | Week 4 | **Evaluations** — Add evaluation suites and assertions, add fixture runner, compare agent versions, add regression view | Planned |
@@ -79,4 +79,21 @@ flowchart LR
 
 ## Getting started
 
-Setup instructions will be added once the first packages are in place.
+Local PostgreSQL and Redis run with Docker Compose:
+
+```bash
+cp .env.example .env        # then set POSTGRES_PASSWORD
+docker compose up -d
+```
+
+See [`infra/README.md`](infra/README.md) for details. Setup for the apps will be added as they gain features.
+
+Checks (the same ones CI runs on every push to `main` and every pull request):
+
+```bash
+pnpm install
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
