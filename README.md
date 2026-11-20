@@ -86,7 +86,29 @@ cp .env.example .env        # then set POSTGRES_PASSWORD
 docker compose up -d
 ```
 
-See [`infra/README.md`](infra/README.md) for details. Setup for the apps will be added as they gain features.
+See [`infra/README.md`](infra/README.md) for details.
+
+### API
+
+```bash
+pnpm install                              # also generates the Prisma client
+pnpm --filter @agentledger/contracts build
+pnpm --filter @agentledger/api db:deploy  # apply migrations to DATABASE_URL
+pnpm --filter @agentledger/api db:seed    # synthetic workspaces; prints local API tokens
+pnpm --filter @agentledger/api dev        # http://localhost:4000
+```
+
+Requests use `Authorization: Bearer <token>`. Workspace roles, from least to most privileged: `viewer`, `reviewer`, `editor`, `admin`. A workspace you are not a member of answers `404`, exactly like one that does not exist.
+
+| Method | Path | Role |
+|---|---|---|
+| `GET` | `/health` | public |
+| `GET` | `/v1/workspaces` | any signed-in user (lists own workspaces) |
+| `POST` | `/v1/workspaces` | any signed-in user (becomes `admin`) |
+| `GET` | `/v1/workspaces/:workspaceId` | `viewer` |
+| `GET` | `/v1/workspaces/:workspaceId/members` | `admin` |
+
+Errors share one shape: `{ "error": { "code": "...", "message": "..." } }`.
 
 Checks (the same ones CI runs on every push to `main` and every pull request):
 

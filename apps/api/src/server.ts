@@ -1,20 +1,45 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyError, type FastifyServerOptions } from "fastify";
+import { ZodError } from "zod";
+import { HttpError } from "./errors.js";
+import { registerWorkspaceRoutes } from "./routes/workspaces.js";
+import type { WorkspaceStore } from "./store/types.js";
 
-export function buildServer() {
-  const app = Fastify({ logger: true });
-
-  app.get("/health", async () => ({ status: "ok" }));
-
-  return app;
+export interface ServerOptions {
+  store: WorkspaceStore;
+  logger?: FastifyServerOptions["logger"];
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+export function buildServer({ store, logger = true }: ServerOptions) {
+  // Fastify's default request serializer logs method and URL only, never headers,
+  // so bearer tokens stay out of the logs.
+  const app = Fastify({ logger });
 
-if (isMain) {
-  const port = Number(process.env.API_PORT ?? 4000);
-  const app = buildServer();
-  app.listen({ port, host: "0.0.0.0" }).catch((err) => {
-    app.log.error(err);
-    process.exit(1);
+  app.setErrorHandler((error: FastifyError | HttpError | ZodError, request, reply) => {
+    if (error instanceof HttpError) {
+      return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message } });
+    }
+    if (error instanceof ZodError) {
+      return reply.code(400).send({
+        error: {
+          code: "validation_failed",
+          message: "The request is invalid.",
+          details: error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+        },
+      });
+    }
+    if (error.statusCode !== undefined && error.statusCode < 500) {
+      return reply.code(error.statusCode).send({ error: { code: "bad_request", message: error.message } });
+    }
+    request.log.error(error);
+    return reply.code(500).send({ error: { code: "internal_error", message: "Something went wrong." } });
   });
+
+  app.setNotFoundHandler((_request, reply) =>
+    reply.code(404).send({ error: { code: "not_found", message: "Route not found." } }),
+  );
+
+  app.get("/health", async () => ({ status: "ok" }));
+  registerWorkspaceRoutes(app, store);
+
+  return app;
 }
