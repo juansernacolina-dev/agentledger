@@ -27,3 +27,5 @@ export const agentNotFound = () => new HttpError(404, "agent_not_found", "Agent 
 
 export const versionNotFound = () =>
   new HttpError(404, "version_not_found", "Agent version not found.");
+
+export const runNotFound = () => new HttpError(404, "run_not_found", "Run not found.");

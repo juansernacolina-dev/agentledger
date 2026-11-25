@@ -2,7 +2,15 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { AgentRunSchema, parseRun, type AgentRun } from "../src/index.js";
+import {
+  AgentRunSchema,
+  canTransitionRun,
+  isTerminalRunStatus,
+  parseRun,
+  RUN_STATUS_TRANSITIONS,
+  TERMINAL_RUN_STATUSES,
+  type AgentRun,
+} from "../src/index.js";
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), "../fixtures/runs");
 
@@ -114,5 +122,33 @@ describe("run contract rules", () => {
   it("keeps fixture timing labelled as fixture timing", () => {
     const run = AgentRunSchema.parse(base());
     expect(run.timingSource).toBe("fixture");
+  });
+});
+
+describe("run lifecycle", () => {
+  it("allows only the documented status changes", () => {
+    expect(canTransitionRun("queued", "running")).toBe(true);
+    expect(canTransitionRun("queued", "cancelled")).toBe(true);
+    expect(canTransitionRun("queued", "succeeded")).toBe(false);
+    expect(canTransitionRun("running", "paused")).toBe(true);
+    expect(canTransitionRun("paused", "running")).toBe(true);
+    expect(canTransitionRun("paused", "succeeded")).toBe(false);
+    expect(canTransitionRun("running", "running")).toBe(false);
+  });
+
+  it("never moves a run out of a terminal status", () => {
+    for (const from of TERMINAL_RUN_STATUSES) {
+      expect(isTerminalRunStatus(from)).toBe(true);
+      expect(RUN_STATUS_TRANSITIONS[from]).toEqual([]);
+    }
+    expect(isTerminalRunStatus("paused")).toBe(false);
+  });
+
+  it("only reaches terminal statuses that require finishedAt", () => {
+    for (const [from, targets] of Object.entries(RUN_STATUS_TRANSITIONS)) {
+      for (const to of targets) {
+        expect(to, `${from} -> ${to}`).not.toBe("queued");
+      }
+    }
   });
 });

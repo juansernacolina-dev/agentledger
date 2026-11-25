@@ -15,6 +15,11 @@ Beyond field types it enforces:
 - errored steps carry an error message; other steps don't
 - unknown fields are rejected, so raw prompts can't slip into a stored run
 
+`RUN_STATUS_TRANSITIONS` / `canTransitionRun(from, to)` define the run
+lifecycle: `queued → running | cancelled`, `running → paused | succeeded |
+failed | cancelled`, `paused → running | failed | cancelled`. Terminal statuses
+never change again.
+
 `parseRun(input)` validates untrusted input and returns `{ ok, run }` or
 `{ ok: false, issues: [{ path, message }] }` without throwing.
 

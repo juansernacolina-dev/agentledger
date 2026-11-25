@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { canonicalJson, hashConfig } from "../src/agents/config-hash.js";
 import { hashToken } from "../src/auth/tokens.js";
 import { buildServer } from "../src/server.js";
-import { InMemoryAgentStore, InMemoryWorkspaceStore } from "../src/store/memory.js";
+import { InMemoryAgentStore, InMemoryRunStore, InMemoryWorkspaceStore } from "../src/store/memory.js";
 
 const ACME = "ws_acmesupport";
 const GLOBEX = "ws_globexops";
@@ -53,7 +53,12 @@ describe("agent routes", () => {
   let app: ReturnType<typeof buildServer>;
 
   beforeEach(() => {
-    app = buildServer({ store: workspaces(), agents: new InMemoryAgentStore(), logger: false });
+    app = buildServer({
+      store: workspaces(),
+      agents: new InMemoryAgentStore(),
+      runs: new InMemoryRunStore(),
+      logger: false,
+    });
   });
 
   afterEach(async () => {

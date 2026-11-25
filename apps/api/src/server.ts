@@ -2,16 +2,18 @@ import Fastify, { type FastifyError, type FastifyServerOptions } from "fastify";
 import { ZodError } from "zod";
 import { HttpError } from "./errors.js";
 import { registerAgentRoutes } from "./routes/agents.js";
+import { registerRunRoutes } from "./routes/runs.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
-import type { AgentStore, WorkspaceStore } from "./store/types.js";
+import type { AgentStore, RunStore, WorkspaceStore } from "./store/types.js";
 
 export interface ServerOptions {
   store: WorkspaceStore;
   agents: AgentStore;
+  runs: RunStore;
   logger?: FastifyServerOptions["logger"];
 }
 
-export function buildServer({ store, agents, logger = true }: ServerOptions) {
+export function buildServer({ store, agents, runs, logger = true }: ServerOptions) {
   // Fastify's default request serializer logs method and URL only, never headers,
   // so bearer tokens stay out of the logs.
   const app = Fastify({ logger });
@@ -43,6 +45,7 @@ export function buildServer({ store, agents, logger = true }: ServerOptions) {
   app.get("/health", async () => ({ status: "ok" }));
   registerWorkspaceRoutes(app, store);
   registerAgentRoutes(app, store, agents);
+  registerRunRoutes(app, store, agents, runs);
 
   return app;
 }

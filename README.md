@@ -113,10 +113,16 @@ Requests use `Authorization: Bearer <token>`. Workspace roles, from least to mos
 | `GET` | `/v1/workspaces/:workspaceId/agents/:agentId/versions` | `viewer` (newest first, without config) |
 | `POST` | `/v1/workspaces/:workspaceId/agents/:agentId/versions` | `editor` |
 | `GET` | `/v1/workspaces/:workspaceId/agents/:agentId/versions/:version` | `viewer` (full config) |
+| `POST` | `/v1/workspaces/:workspaceId/runs` | `editor` |
+| `GET` | `/v1/workspaces/:workspaceId/runs` | `viewer` (newest first; `agentId`, `status`, `limit` ≤ 100, `cursor`) |
+| `GET` | `/v1/workspaces/:workspaceId/runs/:runId` | `viewer` (with input) |
+| `POST` | `/v1/workspaces/:workspaceId/runs/:runId/cancel` | `editor` |
 
 Errors share one shape: `{ "error": { "code": "...", "message": "..." } }`.
 
 **Agent versions are immutable.** Publishing a config (model, instructions, tools, budget — validated by `AgentVersionConfigSchema` in `@agentledger/contracts`) stores it as the next version number. A version can never be edited or deleted: the API answers `PUT`/`PATCH`/`DELETE` with `405 version_immutable`, and a database trigger rejects `UPDATE` and `DELETE` on `agent_versions`. Each version stores a SHA-256 `configHash` of its key-sorted JSON; publishing a config identical to the latest version returns `409 version_unchanged`. Send `expectedLatestVersion` (or `null` for the first version) to get `409 version_conflict` instead of silently publishing on top of someone else's change. The seed adds a demo `refund-assistant` agent with two versions in `acme-support`.
+
+**Runs stay linked to one version.** `POST …/runs` with `{ "agentId", "version"?, "input" }` queues a run on that version (default: the latest) and copies its budget onto the run; `input` is a JSON object of at most 32 KB. Runs of `fixture` models are labelled `timingSource: "fixture"` so replayed timings are never shown as measurements. Responses carry the run in the shared contract shape (`run`, with `steps` filled in once traces are recorded), plus `lifecycle` (`createdById`, `startedAt`, `failureReason`). Status changes follow the contract's `RUN_STATUS_TRANSITIONS`; an invalid move, such as cancelling a finished run, answers `409 invalid_run_transition`. In PostgreSQL a composite foreign key keeps each run, its agent and its version in one workspace, CHECK constraints tie `startedAt`/`finishedAt`/`failureReason` to the status, and a trigger rejects deleting a run or changing anything but its status fields. Runs of other workspaces answer `404 run_not_found`.
 
 Checks (the same ones CI runs on every push to `main` and every pull request):
 

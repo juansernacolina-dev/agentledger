@@ -1,4 +1,4 @@
-import type { AgentVersionConfig } from "@agentledger/contracts";
+import type { AgentVersionConfig, RunBudget, RunStatus, TimingSource } from "@agentledger/contracts";
 import type { WorkspaceRole } from "../auth/roles.js";
 
 export interface UserRecord {
@@ -137,4 +137,90 @@ export interface AgentStore {
    * append-only: there is no update or delete.
    */
   publishVersion(input: PublishVersionInput): Promise<AgentVersionRecord>;
+}
+
+export interface RunRecord {
+  id: string;
+  workspaceId: string;
+  agentId: string;
+  agentVersionId: string;
+  /** The version number of `agentVersionId`. */
+  agentVersion: number;
+  status: RunStatus;
+  timingSource: TimingSource;
+  budget: RunBudget;
+  input: Record<string, unknown>;
+  failureReason: string | null;
+  createdById: string;
+  createdAt: Date;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+}
+
+export interface CreateRunInput {
+  id: string;
+  /** The exact version to run; its workspace and agent are copied onto the run. */
+  version: Pick<AgentVersionRecord, "id" | "workspaceId" | "agentId" | "version">;
+  timingSource: TimingSource;
+  budget: RunBudget;
+  input: Record<string, unknown>;
+  createdById: string;
+  createdAt: Date;
+}
+
+export interface TransitionRunInput {
+  workspaceId: string;
+  runId: string;
+  to: RunStatus;
+  at: Date;
+  /** Required when moving to `failed`, rejected otherwise. */
+  failureReason?: string;
+}
+
+/** Keyset position: runs strictly older than this (createdAt, id) pair. */
+export interface RunCursor {
+  createdAt: Date;
+  id: string;
+}
+
+export interface ListRunsQuery {
+  agentId?: string;
+  status?: RunStatus;
+  limit: number;
+  after?: RunCursor;
+}
+
+export class RunNotFoundError extends Error {
+  constructor(readonly runId: string) {
+    super(`Run ${runId} not found.`);
+    this.name = "RunNotFoundError";
+  }
+}
+
+export class InvalidRunTransitionError extends Error {
+  constructor(
+    readonly from: RunStatus,
+    readonly to: RunStatus,
+  ) {
+    super(`A ${from} run cannot become ${to}.`);
+    this.name = "InvalidRunTransitionError";
+  }
+}
+
+/**
+ * Persistence for agent runs. Runs are scoped by workspace like agents, always
+ * point at one immutable version, and only change status along
+ * `RUN_STATUS_TRANSITIONS`.
+ */
+export interface RunStore {
+  createRun(input: CreateRunInput): Promise<RunRecord>;
+  findRun(workspaceId: string, runId: string): Promise<RunRecord | null>;
+  /** Newest first: createdAt descending, then id descending. */
+  listRuns(workspaceId: string, query: ListRunsQuery): Promise<RunRecord[]>;
+  /**
+   * Moves a run to a new status, stamping `startedAt` on its first start and
+   * `finishedAt` when it ends. Concurrent callers are serialised, so only
+   * transitions valid from the current status succeed.
+   */
+  transitionRun(input: TransitionRunInput): Promise<RunRecord>;
 }

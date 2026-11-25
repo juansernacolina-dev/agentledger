@@ -38,6 +38,27 @@ export const TERMINAL_RUN_STATUSES: readonly RunStatus[] = [
   "cancelled",
 ];
 
+/**
+ * Allowed status changes. A run is queued, then runs; it may pause for a
+ * review and resume. Terminal statuses never change again.
+ */
+export const RUN_STATUS_TRANSITIONS: Readonly<Record<RunStatus, readonly RunStatus[]>> = {
+  queued: ["running", "cancelled"],
+  running: ["paused", "succeeded", "failed", "cancelled"],
+  paused: ["running", "failed", "cancelled"],
+  succeeded: [],
+  failed: [],
+  cancelled: [],
+};
+
+export function canTransitionRun(from: RunStatus, to: RunStatus): boolean {
+  return RUN_STATUS_TRANSITIONS[from].includes(to);
+}
+
+export function isTerminalRunStatus(status: RunStatus): boolean {
+  return TERMINAL_RUN_STATUSES.includes(status);
+}
+
 export const StepKindSchema = z.enum(["model", "tool", "retrieval", "decision"]);
 export const StepStatusSchema = z.enum(["ok", "error", "skipped", "pending_approval"]);
 
@@ -46,6 +67,7 @@ export const StepStatusSchema = z.enum(["ok", "error", "skipped", "pending_appro
  * must never be presented as live measurements.
  */
 export const TimingSourceSchema = z.enum(["fixture", "measured"]);
+export type TimingSource = z.infer<typeof TimingSourceSchema>;
 
 export const RunBudgetSchema = z
   .object({

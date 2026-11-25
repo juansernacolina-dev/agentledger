@@ -1,6 +1,7 @@
-import type { AgentVersionConfig } from "@agentledger/contracts";
+import type { AgentVersionConfig, RunBudget } from "@agentledger/contracts";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { nextVersionNumber } from "../agents/publish.js";
+import { applyTransition } from "../runs/lifecycle.js";
 import {
   AgentSlugTakenError,
   SlugTakenError,
@@ -8,6 +9,12 @@ import {
   type AgentStore,
   type AgentVersionRecord,
   type CreateAgentInput,
+  type CreateRunInput,
+  type ListRunsQuery,
+  type RunRecord,
+  type RunStore,
+  type TransitionRunInput,
+  RunNotFoundError,
   type PublishVersionInput,
   type CreateWorkspaceInput,
   type MemberRecord,
@@ -188,6 +195,108 @@ export class PrismaAgentStore implements AgentStore {
         select: versionFields,
       });
       return toVersionRecord(row);
+    });
+  }
+}
+
+const runFields = {
+  id: true,
+  workspaceId: true,
+  agentId: true,
+  agentVersionId: true,
+  status: true,
+  timingSource: true,
+  budget: true,
+  input: true,
+  failureReason: true,
+  createdById: true,
+  createdAt: true,
+  startedAt: true,
+  finishedAt: true,
+  agentVersion: { select: { version: true } },
+} as const satisfies Prisma.AgentRunSelect;
+
+type RunRow = Prisma.AgentRunGetPayload<{ select: typeof runFields }>;
+
+/** Budgets come from validated version configs; inputs were validated as objects. */
+function toRunRecord({ agentVersion, ...row }: RunRow): RunRecord {
+  return {
+    ...row,
+    agentVersion: agentVersion.version,
+    budget: row.budget as unknown as RunBudget,
+    input: row.input as Record<string, unknown>,
+  };
+}
+
+export class PrismaRunStore implements RunStore {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async createRun(input: CreateRunInput): Promise<RunRecord> {
+    // The composite foreign key rejects a version that does not belong to
+    // this agent and workspace.
+    const row = await this.prisma.agentRun.create({
+      data: {
+        id: input.id,
+        workspaceId: input.version.workspaceId,
+        agentId: input.version.agentId,
+        agentVersionId: input.version.id,
+        timingSource: input.timingSource,
+        budget: input.budget as unknown as Prisma.InputJsonObject,
+        input: input.input as Prisma.InputJsonObject,
+        createdById: input.createdById,
+        createdAt: input.createdAt,
+      },
+      select: runFields,
+    });
+    return toRunRecord(row);
+  }
+
+  async findRun(workspaceId: string, runId: string): Promise<RunRecord | null> {
+    const row = await this.prisma.agentRun.findFirst({ where: { id: runId, workspaceId }, select: runFields });
+    return row === null ? null : toRunRecord(row);
+  }
+
+  async listRuns(workspaceId: string, query: ListRunsQuery): Promise<RunRecord[]> {
+    const { after } = query;
+    const rows = await this.prisma.agentRun.findMany({
+      where: {
+        workspaceId,
+        agentId: query.agentId,
+        status: query.status,
+        ...(after === undefined
+          ? {}
+          : {
+              OR: [
+                { createdAt: { lt: after.createdAt } },
+                { createdAt: after.createdAt, id: { lt: after.id } },
+              ],
+            }),
+      },
+      select: runFields,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: query.limit,
+    });
+    return rows.map(toRunRecord);
+  }
+
+  async transitionRun(input: TransitionRunInput): Promise<RunRecord> {
+    return this.prisma.$transaction(async (tx) => {
+      // Lock the row so two workers cannot both move the same run.
+      const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM agent_runs
+        WHERE id = ${input.runId} AND workspace_id = ${input.workspaceId}
+        FOR UPDATE`;
+      if (locked.length === 0) throw new RunNotFoundError(input.runId);
+      const current = await tx.agentRun.findUniqueOrThrow({
+        where: { id: input.runId },
+        select: { status: true, startedAt: true, finishedAt: true, failureReason: true },
+      });
+      const row = await tx.agentRun.update({
+        where: { id: input.runId },
+        data: applyTransition(current, input),
+        select: runFields,
+      });
+      return toRunRecord(row);
     });
   }
 }

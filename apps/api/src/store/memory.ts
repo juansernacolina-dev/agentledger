@@ -1,4 +1,5 @@
 import { nextVersionNumber } from "../agents/publish.js";
+import { applyTransition } from "../runs/lifecycle.js";
 import type { WorkspaceRole } from "../auth/roles.js";
 import {
   AgentSlugTakenError,
@@ -7,6 +8,12 @@ import {
   type AgentStore,
   type AgentVersionRecord,
   type CreateAgentInput,
+  type CreateRunInput,
+  type ListRunsQuery,
+  type RunRecord,
+  type RunStore,
+  type TransitionRunInput,
+  RunNotFoundError,
   type PublishVersionInput,
   type CreateWorkspaceInput,
   type MemberRecord,
@@ -181,5 +188,70 @@ export class InMemoryAgentStore implements AgentStore {
 
   private withLatest(agent: Omit<AgentRecord, "latestVersion">): AgentRecord {
     return { ...agent, latestVersion: this.latestOf(agent.workspaceId, agent.id)?.version ?? null };
+  }
+}
+
+/** Newest first, matching the Prisma store's ORDER BY created_at DESC, id DESC. */
+function newestFirst(a: RunRecord, b: RunRecord): number {
+  const byTime = b.createdAt.getTime() - a.createdAt.getTime();
+  if (byTime !== 0) return byTime;
+  return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+}
+
+/** True when the run sorts after the cursor in newest-first order. */
+function isBefore(run: RunRecord, cursor: { createdAt: Date; id: string }): boolean {
+  const time = run.createdAt.getTime();
+  const at = cursor.createdAt.getTime();
+  return time < at || (time === at && run.id < cursor.id);
+}
+
+/** In-memory run store with the same rules as the Prisma store. */
+export class InMemoryRunStore implements RunStore {
+  private readonly runs = new Map<string, RunRecord>();
+
+  async createRun(input: CreateRunInput): Promise<RunRecord> {
+    if (this.runs.has(input.id)) throw new Error(`duplicate run id ${input.id}`);
+    const run: RunRecord = {
+      id: input.id,
+      workspaceId: input.version.workspaceId,
+      agentId: input.version.agentId,
+      agentVersionId: input.version.id,
+      agentVersion: input.version.version,
+      status: "queued",
+      timingSource: input.timingSource,
+      budget: structuredClone(input.budget),
+      input: structuredClone(input.input),
+      failureReason: null,
+      createdById: input.createdById,
+      createdAt: input.createdAt,
+      startedAt: null,
+      finishedAt: null,
+    };
+    this.runs.set(run.id, run);
+    return structuredClone(run);
+  }
+
+  async findRun(workspaceId: string, runId: string): Promise<RunRecord | null> {
+    const run = this.runs.get(runId);
+    return run === undefined || run.workspaceId !== workspaceId ? null : structuredClone(run);
+  }
+
+  async listRuns(workspaceId: string, query: ListRunsQuery): Promise<RunRecord[]> {
+    const { after } = query;
+    return [...this.runs.values()]
+      .filter((run) => run.workspaceId === workspaceId)
+      .filter((run) => query.agentId === undefined || run.agentId === query.agentId)
+      .filter((run) => query.status === undefined || run.status === query.status)
+      .filter((run) => after === undefined || isBefore(run, after))
+      .sort(newestFirst)
+      .slice(0, query.limit)
+      .map((run) => structuredClone(run));
+  }
+
+  async transitionRun(input: TransitionRunInput): Promise<RunRecord> {
+    const run = this.runs.get(input.runId);
+    if (run === undefined || run.workspaceId !== input.workspaceId) throw new RunNotFoundError(input.runId);
+    Object.assign(run, applyTransition(run, input));
+    return structuredClone(run);
   }
 }
