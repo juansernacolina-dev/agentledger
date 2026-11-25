@@ -4,7 +4,7 @@ import { hashToken } from "../src/auth/tokens.js";
 import { decodeCursor, encodeCursor, MAX_RUN_INPUT_BYTES } from "../src/routes/runs.js";
 import { applyTransition } from "../src/runs/lifecycle.js";
 import { buildServer } from "../src/server.js";
-import { InMemoryAgentStore, InMemoryRunStore, InMemoryWorkspaceStore } from "../src/store/memory.js";
+import { InMemoryAgentStore, InMemoryRunStore, InMemoryTraceStore, InMemoryWorkspaceStore } from "../src/store/memory.js";
 import { InvalidRunTransitionError, RunNotFoundError, type AgentVersionRecord } from "../src/store/types.js";
 
 const ACME = "ws_acmesupport";
@@ -48,7 +48,13 @@ describe("run routes", () => {
 
   beforeEach(() => {
     runs = new InMemoryRunStore();
-    app = buildServer({ store: workspaces(), agents: new InMemoryAgentStore(), runs, logger: false });
+    app = buildServer({
+      store: workspaces(),
+      agents: new InMemoryAgentStore(),
+      runs,
+      traces: new InMemoryTraceStore(runs),
+      logger: false,
+    });
   });
 
   afterEach(async () => {

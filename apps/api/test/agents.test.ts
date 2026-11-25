@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { canonicalJson, hashConfig } from "../src/agents/config-hash.js";
 import { hashToken } from "../src/auth/tokens.js";
 import { buildServer } from "../src/server.js";
-import { InMemoryAgentStore, InMemoryRunStore, InMemoryWorkspaceStore } from "../src/store/memory.js";
+import { InMemoryAgentStore, InMemoryRunStore, InMemoryTraceStore, InMemoryWorkspaceStore } from "../src/store/memory.js";
 
 const ACME = "ws_acmesupport";
 const GLOBEX = "ws_globexops";
@@ -40,6 +40,11 @@ const config = (overrides: Partial<AgentVersionConfig> = {}): AgentVersionConfig
   ...overrides,
 });
 
+function withRuns() {
+  const runs = new InMemoryRunStore();
+  return { runs, traces: new InMemoryTraceStore(runs) };
+}
+
 describe("config hash", () => {
   it("ignores key order but not array order", () => {
     expect(canonicalJson({ b: 1, a: { d: [2, 1], c: null } })).toBe('{"a":{"c":null,"d":[2,1]},"b":1}');
@@ -56,7 +61,7 @@ describe("agent routes", () => {
     app = buildServer({
       store: workspaces(),
       agents: new InMemoryAgentStore(),
-      runs: new InMemoryRunStore(),
+      ...withRuns(),
       logger: false,
     });
   });

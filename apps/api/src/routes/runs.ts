@@ -5,9 +5,10 @@ import {
   RunStatusSchema,
   type AgentRun,
 } from "@agentledger/contracts";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireMembership } from "../auth/access.js";
+import type { WorkspaceRole } from "../auth/roles.js";
 import { agentNotFound, HttpError, runNotFound, versionNotFound } from "../errors.js";
 import { newId } from "../ids.js";
 import { timingSourceFor } from "../runs/lifecycle.js";
@@ -93,6 +94,24 @@ function toRunView(run: RunRecord) {
 
 const toRunDetail = (run: RunRecord) => ({ ...toRunView(run), input: run.input });
 
+/**
+ * The run named in the URL, after checking the caller's role in its
+ * workspace. Unknown, malformed and other workspaces' run IDs all give 404.
+ */
+export async function loadRun(
+  request: FastifyRequest,
+  store: WorkspaceStore,
+  runs: RunStore,
+  required: WorkspaceRole,
+): Promise<RunRecord> {
+  const params = RunParams.parse(request.params);
+  const { membership } = await requireMembership(request, store, parseWorkspaceId(request.params), required);
+  const runId = RunIdSchema.safeParse(params.runId);
+  const run = runId.success ? await runs.findRun(membership.workspace.id, runId.data) : null;
+  if (run === null) throw runNotFound();
+  return run;
+}
+
 export function registerRunRoutes(
   app: FastifyInstance,
   store: WorkspaceStore,
@@ -152,14 +171,7 @@ export function registerRunRoutes(
     };
   });
 
-  async function resolveRun(request: Parameters<typeof requireMembership>[0], required: "viewer" | "editor") {
-    const params = RunParams.parse(request.params);
-    const { membership } = await requireMembership(request, store, parseWorkspaceId(request.params), required);
-    const runId = RunIdSchema.safeParse(params.runId);
-    const run = runId.success ? await runs.findRun(membership.workspace.id, runId.data) : null;
-    if (run === null) throw runNotFound();
-    return run;
-  }
+  const resolveRun = (request: FastifyRequest, required: WorkspaceRole) => loadRun(request, store, runs, required);
 
   app.get("/v1/workspaces/:workspaceId/runs/:runId", async (request) => toRunDetail(await resolveRun(request, "viewer")));
 

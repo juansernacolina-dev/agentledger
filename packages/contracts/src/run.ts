@@ -8,7 +8,8 @@ import { z } from "zod";
  */
 export const RUN_CONTRACT_VERSION = 1;
 
-const idPattern = (prefix: string) =>
+/** `<prefix>_<6-32 lowercase letters or digits>`, the ID format shared by every entity. */
+export const idPattern = (prefix: string) =>
   z
     .string()
     .regex(

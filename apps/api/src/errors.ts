@@ -4,6 +4,8 @@ export class HttpError extends Error {
     readonly statusCode: number,
     readonly code: string,
     message: string,
+    /** Extra machine-readable context, sent as `error.details`. */
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = "HttpError";

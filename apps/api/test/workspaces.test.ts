@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hasRole } from "../src/auth/roles.js";
 import { hashToken, readBearerToken } from "../src/auth/tokens.js";
 import { buildServer } from "../src/server.js";
-import { InMemoryAgentStore, InMemoryRunStore, InMemoryWorkspaceStore } from "../src/store/memory.js";
+import { InMemoryAgentStore, InMemoryRunStore, InMemoryTraceStore, InMemoryWorkspaceStore } from "../src/store/memory.js";
 
 const ACME = "ws_acmesupport";
 const GLOBEX = "ws_globexops";
@@ -33,6 +33,11 @@ function seededStore() {
 
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 
+function withRuns() {
+  const runs = new InMemoryRunStore();
+  return { runs, traces: new InMemoryTraceStore(runs) };
+}
+
 describe("roles", () => {
   it("orders roles from viewer to admin", () => {
     expect(hasRole("admin", "editor")).toBe(true);
@@ -59,7 +64,7 @@ describe("workspace routes", () => {
     app = buildServer({
       store: seededStore(),
       agents: new InMemoryAgentStore(),
-      runs: new InMemoryRunStore(),
+      ...withRuns(),
       logger: false,
     });
   });

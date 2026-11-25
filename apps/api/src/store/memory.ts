@@ -1,5 +1,7 @@
 import { nextVersionNumber } from "../agents/publish.js";
+import type { TraceEvent } from "@agentledger/contracts";
 import { applyTransition } from "../runs/lifecycle.js";
+import { planTraceAppend } from "../traces/append.js";
 import type { WorkspaceRole } from "../auth/roles.js";
 import {
   AgentSlugTakenError,
@@ -13,6 +15,9 @@ import {
   type RunRecord,
   type RunStore,
   type TransitionRunInput,
+  type AppendTraceInput,
+  type AppendTraceResult,
+  type TraceStore,
   RunNotFoundError,
   type PublishVersionInput,
   type CreateWorkspaceInput,
@@ -232,8 +237,14 @@ export class InMemoryRunStore implements RunStore {
   }
 
   async findRun(workspaceId: string, runId: string): Promise<RunRecord | null> {
+    const run = this.peekRun(workspaceId, runId);
+    return run === null ? null : structuredClone(run);
+  }
+
+  /** The live record, read synchronously; for stores that build on runs. */
+  peekRun(workspaceId: string, runId: string): Readonly<RunRecord> | null {
     const run = this.runs.get(runId);
-    return run === undefined || run.workspaceId !== workspaceId ? null : structuredClone(run);
+    return run === undefined || run.workspaceId !== workspaceId ? null : run;
   }
 
   async listRuns(workspaceId: string, query: ListRunsQuery): Promise<RunRecord[]> {
@@ -253,5 +264,30 @@ export class InMemoryRunStore implements RunStore {
     if (run === undefined || run.workspaceId !== input.workspaceId) throw new RunNotFoundError(input.runId);
     Object.assign(run, applyTransition(run, input));
     return structuredClone(run);
+  }
+}
+
+/**
+ * In-memory trace store with the same rules as the Prisma store. Appends run
+ * synchronously, so concurrent calls cannot interleave.
+ */
+export class InMemoryTraceStore implements TraceStore {
+  private readonly events = new Map<string, TraceEvent[]>();
+
+  constructor(private readonly runs: InMemoryRunStore) {}
+
+  async listTraceEvents(workspaceId: string, runId: string): Promise<TraceEvent[]> {
+    if (this.runs.peekRun(workspaceId, runId) === null) return [];
+    return structuredClone(this.events.get(runId) ?? []);
+  }
+
+  async appendTraceEvents(input: AppendTraceInput): Promise<AppendTraceResult> {
+    const run = this.runs.peekRun(input.workspaceId, input.runId);
+    if (run === null) throw new RunNotFoundError(input.runId);
+    const existing = this.events.get(run.id) ?? [];
+    const plan = planTraceAppend(run, existing, input.events);
+    const appended = structuredClone(plan.insert);
+    this.events.set(run.id, [...existing, ...appended]);
+    return { appended: structuredClone(appended), replayed: plan.replayed, nextSequence: existing.length + appended.length };
   }
 }

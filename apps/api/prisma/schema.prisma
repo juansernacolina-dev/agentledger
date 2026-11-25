@@ -157,10 +157,46 @@ model AgentRun {
   workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   agentVersion   AgentVersion @relation(fields: [agentVersionId, agentId, workspaceId], references: [id, agentId, workspaceId], onDelete: Restrict)
   createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  traceEvents    TraceEvent[]
 
+  @@unique([id, workspaceId])
   @@index([workspaceId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([workspaceId, agentId, createdAt(sort: Desc)])
   @@index([agentVersionId])
   @@index([createdById])
   @@map("agent_runs")
+}
+
+/// Mirrors the `type` of TraceEventSchema in @agentledger/contracts.
+enum TraceEventType {
+  step_started
+  step_finished
+}
+
+/// One redacted event in a run's trace, numbered per run from 0. Event and step
+/// IDs come from the reporter and are unique per run, so replaying a fixture
+/// gives the same IDs every time. `data` holds the type-specific fields
+/// (index/kind/name/tool/input or status/output/error) after redaction, and
+/// `redactions` lists the paths that were removed. A trigger (see the
+/// migration) rejects UPDATE and DELETE, and inserts unless the run is
+/// running or paused.
+model TraceEvent {
+  runId       String         @map("run_id")
+  sequence    Int
+  id          String
+  workspaceId String         @map("workspace_id")
+  stepId      String         @map("step_id")
+  type        TraceEventType
+  attempt     Int
+  offsetMs    Int            @map("offset_ms")
+  data        Json
+  redactions  Json
+  createdAt   DateTime       @default(now()) @map("created_at")
+  run         AgentRun       @relation(fields: [runId, workspaceId], references: [id, workspaceId], onDelete: Restrict)
+
+  @@id([runId, sequence])
+  @@unique([runId, id])
+  @@index([runId, stepId])
+  @@index([workspaceId])
+  @@map("trace_events")
 }

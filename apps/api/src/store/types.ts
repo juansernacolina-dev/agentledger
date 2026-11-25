@@ -1,4 +1,11 @@
-import type { AgentVersionConfig, RunBudget, RunStatus, TimingSource } from "@agentledger/contracts";
+import type {
+  AgentVersionConfig,
+  ContractIssue,
+  RunBudget,
+  RunStatus,
+  TimingSource,
+  TraceEvent,
+} from "@agentledger/contracts";
 import type { WorkspaceRole } from "../auth/roles.js";
 
 export interface UserRecord {
@@ -223,4 +230,62 @@ export interface RunStore {
    * transitions valid from the current status succeed.
    */
   transitionRun(input: TransitionRunInput): Promise<RunRecord>;
+}
+
+export interface AppendTraceInput {
+  workspaceId: string;
+  runId: string;
+  /** Already redacted, ordered by sequence. */
+  events: TraceEvent[];
+}
+
+export interface AppendTraceResult {
+  /** The events stored by this call. */
+  appended: TraceEvent[];
+  /** Events that were already stored with identical content (a retried batch). */
+  replayed: number;
+  /** The sequence the next new event must use. */
+  nextSequence: number;
+}
+
+/** New trace events can only be added while the run is running or paused. */
+export class RunNotAcceptingTraceError extends Error {
+  constructor(readonly status: RunStatus) {
+    super(`A ${status} run does not take new trace events.`);
+    this.name = "RunNotAcceptingTraceError";
+  }
+}
+
+/** The batch does not line up with what is already stored for the run. */
+export class TraceConflictError extends Error {
+  constructor(
+    readonly code: "trace_event_conflict" | "trace_sequence_gap",
+    message: string,
+    readonly nextSequence: number,
+  ) {
+    super(message);
+    this.name = "TraceConflictError";
+  }
+}
+
+/** The events break the trace rules in the shared contract (`checkTrace`). */
+export class InvalidTraceError extends Error {
+  constructor(readonly issues: ContractIssue[]) {
+    super("The trace events are not consistent with the run.");
+    this.name = "InvalidTraceError";
+  }
+}
+
+/**
+ * Persistence for redacted trace events. Events are append-only and scoped by
+ * workspace through their run; appends to one run are serialised.
+ */
+export interface TraceStore {
+  /** Ordered by sequence. Empty for an unknown run or another workspace's run. */
+  listTraceEvents(workspaceId: string, runId: string): Promise<TraceEvent[]>;
+  /**
+   * Stores the events after the ones already there. Events that repeat stored
+   * ones exactly are skipped, so a worker can safely retry a batch.
+   */
+  appendTraceEvents(input: AppendTraceInput): Promise<AppendTraceResult>;
 }

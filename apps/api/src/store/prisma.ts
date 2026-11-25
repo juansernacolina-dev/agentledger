@@ -1,7 +1,8 @@
-import type { AgentVersionConfig, RunBudget } from "@agentledger/contracts";
+import type { AgentVersionConfig, Redaction, RunBudget, TraceEvent } from "@agentledger/contracts";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { nextVersionNumber } from "../agents/publish.js";
 import { applyTransition } from "../runs/lifecycle.js";
+import { planTraceAppend } from "../traces/append.js";
 import {
   AgentSlugTakenError,
   SlugTakenError,
@@ -14,6 +15,9 @@ import {
   type RunRecord,
   type RunStore,
   type TransitionRunInput,
+  type AppendTraceInput,
+  type AppendTraceResult,
+  type TraceStore,
   RunNotFoundError,
   type PublishVersionInput,
   type CreateWorkspaceInput,
@@ -297,6 +301,97 @@ export class PrismaRunStore implements RunStore {
         select: runFields,
       });
       return toRunRecord(row);
+    });
+  }
+}
+
+const traceEventFields = {
+  id: true,
+  sequence: true,
+  stepId: true,
+  type: true,
+  attempt: true,
+  offsetMs: true,
+  data: true,
+  redactions: true,
+} as const satisfies Prisma.TraceEventSelect;
+
+type TraceEventRow = Prisma.TraceEventGetPayload<{ select: typeof traceEventFields }>;
+
+/** Rows are written by `toTraceEventRow` from contract-valid, redacted events. */
+function toTraceEvent(row: TraceEventRow): TraceEvent {
+  return {
+    id: row.id,
+    sequence: row.sequence,
+    type: row.type,
+    stepId: row.stepId,
+    attempt: row.attempt,
+    offsetMs: row.offsetMs,
+    ...(row.data as Prisma.JsonObject),
+    redactions: row.redactions as unknown as Redaction[],
+  } as TraceEvent;
+}
+
+function toTraceEventRow(workspaceId: string, runId: string, event: TraceEvent): Prisma.TraceEventCreateManyInput {
+  const { id, sequence, type, stepId, attempt, offsetMs, redactions, ...data } = event;
+  return {
+    runId,
+    workspaceId,
+    id,
+    sequence,
+    type,
+    stepId,
+    attempt,
+    offsetMs,
+    data: data as Prisma.InputJsonObject,
+    redactions: redactions as unknown as Prisma.InputJsonArray,
+  };
+}
+
+export class PrismaTraceStore implements TraceStore {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async listTraceEvents(workspaceId: string, runId: string): Promise<TraceEvent[]> {
+    const rows = await this.prisma.traceEvent.findMany({
+      where: { runId, workspaceId },
+      select: traceEventFields,
+      orderBy: { sequence: "asc" },
+    });
+    return rows.map(toTraceEvent);
+  }
+
+  async appendTraceEvents(input: AppendTraceInput): Promise<AppendTraceResult> {
+    return this.prisma.$transaction(async (tx) => {
+      // Lock the run: appends to one run are serialised, and its status
+      // cannot change while the batch is checked.
+      const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM agent_runs
+        WHERE id = ${input.runId} AND workspace_id = ${input.workspaceId}
+        FOR UPDATE`;
+      if (locked.length === 0) throw new RunNotFoundError(input.runId);
+      const run = await tx.agentRun.findUniqueOrThrow({
+        where: { id: input.runId },
+        select: { status: true, budget: true },
+      });
+      const existing = (
+        await tx.traceEvent.findMany({
+          where: { runId: input.runId },
+          select: traceEventFields,
+          orderBy: { sequence: "asc" },
+        })
+      ).map(toTraceEvent);
+
+      const plan = planTraceAppend(
+        { status: run.status, budget: run.budget as unknown as RunBudget },
+        existing,
+        input.events,
+      );
+      if (plan.insert.length > 0) {
+        await tx.traceEvent.createMany({
+          data: plan.insert.map((event) => toTraceEventRow(input.workspaceId, input.runId, event)),
+        });
+      }
+      return { appended: plan.insert, replayed: plan.replayed, nextSequence: existing.length + plan.insert.length };
     });
   }
 }
