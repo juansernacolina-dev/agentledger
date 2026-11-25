@@ -22,3 +22,8 @@ export const workspaceNotFound = () =>
 
 export const forbidden = (required: string) =>
   new HttpError(403, "forbidden", `This action requires the ${required} role.`);
+
+export const agentNotFound = () => new HttpError(404, "agent_not_found", "Agent not found.");
+
+export const versionNotFound = () =>
+  new HttpError(404, "version_not_found", "Agent version not found.");

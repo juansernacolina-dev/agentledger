@@ -1,6 +1,13 @@
+import { nextVersionNumber } from "../agents/publish.js";
 import type { WorkspaceRole } from "../auth/roles.js";
 import {
+  AgentSlugTakenError,
   SlugTakenError,
+  type AgentRecord,
+  type AgentStore,
+  type AgentVersionRecord,
+  type CreateAgentInput,
+  type PublishVersionInput,
   type CreateWorkspaceInput,
   type MemberRecord,
   type MembershipRecord,
@@ -87,5 +94,92 @@ export class InMemoryWorkspaceStore implements WorkspaceStore {
     const ws = this.workspaces.get(id);
     if (ws === undefined) throw new Error(`unknown workspace ${id}`);
     return ws;
+  }
+}
+
+/**
+ * In-memory agent store with the same rules as the Prisma store. Records are
+ * copied in and out, so callers can never change a stored version.
+ */
+export class InMemoryAgentStore implements AgentStore {
+  private readonly agents = new Map<string, Omit<AgentRecord, "latestVersion">>();
+  private readonly versions: AgentVersionRecord[] = [];
+
+  async listAgents(workspaceId: string): Promise<AgentRecord[]> {
+    return [...this.agents.values()]
+      .filter((agent) => agent.workspaceId === workspaceId)
+      .sort((a, b) => a.slug.localeCompare(b.slug))
+      .map((agent) => this.withLatest(agent));
+  }
+
+  async findAgent(workspaceId: string, agentId: string): Promise<AgentRecord | null> {
+    const agent = this.agents.get(agentId);
+    if (agent === undefined || agent.workspaceId !== workspaceId) return null;
+    return this.withLatest(agent);
+  }
+
+  async createAgent(input: CreateAgentInput): Promise<AgentRecord> {
+    for (const agent of this.agents.values()) {
+      if (agent.workspaceId === input.workspaceId && agent.slug === input.slug) {
+        throw new AgentSlugTakenError(input.slug);
+      }
+    }
+    const agent = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      slug: input.slug,
+      name: input.name,
+      description: input.description,
+      createdAt: new Date(),
+    };
+    this.agents.set(agent.id, agent);
+    return this.withLatest(agent);
+  }
+
+  async listVersions(workspaceId: string, agentId: string): Promise<AgentVersionRecord[]> {
+    return this.versionsOf(workspaceId, agentId)
+      .sort((a, b) => b.version - a.version)
+      .map((version) => structuredClone(version));
+  }
+
+  async findVersion(workspaceId: string, agentId: string, version: number): Promise<AgentVersionRecord | null> {
+    const found = this.versionsOf(workspaceId, agentId).find((v) => v.version === version);
+    return found === undefined ? null : structuredClone(found);
+  }
+
+  async publishVersion(input: PublishVersionInput): Promise<AgentVersionRecord> {
+    const agent = this.agents.get(input.agentId);
+    if (agent === undefined || agent.workspaceId !== input.workspaceId) {
+      throw new Error(`unknown agent ${input.agentId} in workspace ${input.workspaceId}`);
+    }
+    const latest = this.latestOf(input.workspaceId, input.agentId);
+    const record: AgentVersionRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      agentId: input.agentId,
+      version: nextVersionNumber(latest, input),
+      config: structuredClone(input.config),
+      configHash: input.configHash,
+      notes: input.notes,
+      createdById: input.createdById,
+      createdAt: new Date(),
+    };
+    this.versions.push(record);
+    return structuredClone(record);
+  }
+
+  private versionsOf(workspaceId: string, agentId: string): AgentVersionRecord[] {
+    return this.versions.filter((v) => v.workspaceId === workspaceId && v.agentId === agentId);
+  }
+
+  private latestOf(workspaceId: string, agentId: string): AgentVersionRecord | null {
+    return this.versionsOf(workspaceId, agentId).reduce<AgentVersionRecord | null>(
+      (latest, v) => (latest === null || v.version > latest.version ? v : latest),
+      null,
+    );
+  }
+
+  private withLatest(agent: Omit<AgentRecord, "latestVersion">): AgentRecord {
+    return { ...agent, latestVersion: this.latestOf(agent.workspaceId, agent.id)?.version ?? null };
   }
 }

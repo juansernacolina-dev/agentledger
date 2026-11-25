@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { AgentRunSchema, parseRun } from "../src/index.js";
+import { AgentRunSchema, parseRun, type AgentRun } from "../src/index.js";
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), "../fixtures/runs");
 
@@ -48,7 +48,14 @@ describe("run contract fixtures", () => {
 });
 
 describe("run contract rules", () => {
-  const base = () => structuredClone(loadFixture("valid-succeeded.json")) as Record<string, any>;
+  // Tests break the contract on purpose, so the version may hold any number.
+  type EditableRun = Omit<AgentRun, "contractVersion"> & { contractVersion: number };
+  const base = () => structuredClone(loadFixture("valid-succeeded.json")) as EditableRun;
+  const step = (run: EditableRun, index: number) => {
+    const found = run.steps[index];
+    if (found === undefined) throw new Error(`fixture has no step ${index}`);
+    return found;
+  };
 
   it("rejects ids without the expected prefix", () => {
     const run = base();
@@ -67,18 +74,18 @@ describe("run contract rules", () => {
 
   it("rejects duplicate step ids", () => {
     const run = base();
-    run.steps[1].id = run.steps[0].id;
+    step(run, 1).id = step(run, 0).id;
     const result = parseRun(run);
     expect(!result.ok && result.issues.map((issue) => issue.path)).toContain("steps.1.id");
   });
 
   it("requires an error message on errored steps only", () => {
     const missing = base();
-    delete missing.steps[2].error;
+    delete step(missing, 2).error;
     expect(!parseRun(missing).ok).toBe(true);
 
     const unexpected = base();
-    unexpected.steps[0].error = "should not be here";
+    step(unexpected, 0).error = "should not be here";
     expect(!parseRun(unexpected).ok).toBe(true);
   });
 

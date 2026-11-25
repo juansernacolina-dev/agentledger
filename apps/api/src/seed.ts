@@ -1,9 +1,12 @@
 /**
  * Seeds two synthetic workspaces for local development and prints a fresh API
- * token for each demo user. Safe to re-run: records are upserted and every run
- * issues new tokens. All names and emails are fictional.
+ * token for each demo user. Safe to re-run: records are upserted, existing
+ * agent versions are left untouched (they are immutable) and every run issues
+ * new tokens. All names and emails are fictional.
  */
-import { PrismaClient, type WorkspaceRole } from "@prisma/client";
+import { AgentVersionConfigSchema, type AgentVersionConfig } from "@agentledger/contracts";
+import { PrismaClient, type Prisma, type WorkspaceRole } from "@prisma/client";
+import { hashConfig } from "./agents/config-hash.js";
 import { generateToken, hashToken } from "./auth/tokens.js";
 import { newId } from "./ids.js";
 
@@ -39,6 +42,70 @@ const users: { id: string; email: string; displayName: string; roles: Record<str
   },
 ];
 
+const refundTools: AgentVersionConfig["tools"] = [
+  { name: "lookup_order", description: "Read a fictional order by its number.", sensitive: false },
+  { name: "issue_refund", description: "Refund part or all of a fictional order.", sensitive: true },
+];
+
+/** Two versions of one demo agent: v2 trades care for speed. */
+const refundAgent = {
+  id: "agt_acmerefunds",
+  workspaceId: "ws_acmesupport",
+  slug: "refund-assistant",
+  name: "Refund assistant",
+  description: "Answers refund questions for the fictional Acme store.",
+  createdById: "usr_eliaseditor",
+  versions: [
+    {
+      id: "agv_acmerefundsv1",
+      notes: "First version: always looks up the order before answering.",
+      config: {
+        model: { provider: "fixture", name: "support-replay", temperature: 0, maxOutputTokens: 1024 },
+        instructions:
+          "Look up the order before answering. Never promise a refund; request one with issue_refund and wait for approval.",
+        tools: refundTools,
+        budget: { maxSteps: 12, maxDurationMs: 60_000, maxRetries: 2 },
+      },
+    },
+    {
+      id: "agv_acmerefundsv2",
+      notes: "Faster: fewer steps and retries.",
+      config: {
+        model: { provider: "fixture", name: "support-replay-fast", temperature: 0.2, maxOutputTokens: 512 },
+        instructions: "Answer refund questions quickly. Use issue_refund when the customer asks for money back.",
+        tools: refundTools,
+        budget: { maxSteps: 6, maxDurationMs: 20_000, maxRetries: 1 },
+      },
+    },
+  ],
+} as const;
+
+async function seedAgents(prisma: PrismaClient) {
+  const { versions, ...agent } = refundAgent;
+  await prisma.agentDefinition.upsert({
+    where: { id: agent.id },
+    create: agent,
+    update: { slug: agent.slug, name: agent.name, description: agent.description },
+  });
+  for (const [index, version] of versions.entries()) {
+    const existing = await prisma.agentVersion.findUnique({ where: { id: version.id }, select: { id: true } });
+    if (existing !== null) continue;
+    const config = AgentVersionConfigSchema.parse(version.config);
+    await prisma.agentVersion.create({
+      data: {
+        id: version.id,
+        workspaceId: agent.workspaceId,
+        agentId: agent.id,
+        version: index + 1,
+        config: config as unknown as Prisma.InputJsonObject,
+        configHash: hashConfig(config),
+        notes: version.notes,
+        createdById: agent.createdById,
+      },
+    });
+  }
+}
+
 async function main() {
   const prisma = new PrismaClient();
   try {
@@ -67,7 +134,10 @@ async function main() {
       issued.push({ email: user.email, token });
     }
 
-    console.log("Seeded workspaces: acme-support, globex-ops. Local API tokens:");
+    await seedAgents(prisma);
+
+    console.log("Seeded workspaces acme-support, globex-ops and agent refund-assistant (v1, v2).");
+    console.log("Local API tokens:");
     for (const { email, token } of issued) console.log(`  ${email.padEnd(28)} ${token}`);
   } finally {
     await prisma.$disconnect();

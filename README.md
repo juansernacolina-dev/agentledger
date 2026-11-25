@@ -107,8 +107,16 @@ Requests use `Authorization: Bearer <token>`. Workspace roles, from least to mos
 | `POST` | `/v1/workspaces` | any signed-in user (becomes `admin`) |
 | `GET` | `/v1/workspaces/:workspaceId` | `viewer` |
 | `GET` | `/v1/workspaces/:workspaceId/members` | `admin` |
+| `GET` | `/v1/workspaces/:workspaceId/agents` | `viewer` |
+| `POST` | `/v1/workspaces/:workspaceId/agents` | `editor` |
+| `GET` | `/v1/workspaces/:workspaceId/agents/:agentId` | `viewer` |
+| `GET` | `/v1/workspaces/:workspaceId/agents/:agentId/versions` | `viewer` (newest first, without config) |
+| `POST` | `/v1/workspaces/:workspaceId/agents/:agentId/versions` | `editor` |
+| `GET` | `/v1/workspaces/:workspaceId/agents/:agentId/versions/:version` | `viewer` (full config) |
 
 Errors share one shape: `{ "error": { "code": "...", "message": "..." } }`.
+
+**Agent versions are immutable.** Publishing a config (model, instructions, tools, budget — validated by `AgentVersionConfigSchema` in `@agentledger/contracts`) stores it as the next version number. A version can never be edited or deleted: the API answers `PUT`/`PATCH`/`DELETE` with `405 version_immutable`, and a database trigger rejects `UPDATE` and `DELETE` on `agent_versions`. Each version stores a SHA-256 `configHash` of its key-sorted JSON; publishing a config identical to the latest version returns `409 version_unchanged`. Send `expectedLatestVersion` (or `null` for the first version) to get `409 version_conflict` instead of silently publishing on top of someone else's change. The seed adds a demo `refund-assistant` agent with two versions in `acme-support`.
 
 Checks (the same ones CI runs on every push to `main` and every pull request):
 

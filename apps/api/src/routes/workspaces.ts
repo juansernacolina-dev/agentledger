@@ -30,7 +30,7 @@ function toWorkspaceView({ workspace, role }: MembershipRecord) {
 }
 
 /** Malformed IDs can never match a workspace; they are answered like unknown ones. */
-function parseWorkspaceId(params: unknown): string | null {
+export function parseWorkspaceId(params: unknown): string | null {
   const parsed = WorkspaceIdSchema.safeParse(WorkspaceParams.parse(params).workspaceId);
   return parsed.success ? parsed.data : null;
 }

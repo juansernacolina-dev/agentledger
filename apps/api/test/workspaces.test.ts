@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hasRole } from "../src/auth/roles.js";
 import { hashToken, readBearerToken } from "../src/auth/tokens.js";
 import { buildServer } from "../src/server.js";
-import { InMemoryWorkspaceStore } from "../src/store/memory.js";
+import { InMemoryAgentStore, InMemoryWorkspaceStore } from "../src/store/memory.js";
 
 const ACME = "ws_acmesupport";
 const GLOBEX = "ws_globexops";
@@ -56,7 +56,7 @@ describe("workspace routes", () => {
   let app: ReturnType<typeof buildServer>;
 
   beforeEach(() => {
-    app = buildServer({ store: seededStore(), logger: false });
+    app = buildServer({ store: seededStore(), agents: new InMemoryAgentStore(), logger: false });
   });
 
   afterEach(async () => {

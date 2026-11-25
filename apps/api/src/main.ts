@@ -1,9 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 import { buildServer } from "./server.js";
-import { PrismaWorkspaceStore } from "./store/prisma.js";
+import { PrismaAgentStore, PrismaWorkspaceStore } from "./store/prisma.js";
 
 const prisma = new PrismaClient();
-const app = buildServer({ store: new PrismaWorkspaceStore(prisma) });
+const app = buildServer({
+  store: new PrismaWorkspaceStore(prisma),
+  agents: new PrismaAgentStore(prisma),
+});
 
 app.addHook("onClose", async () => {
   await prisma.$disconnect();
