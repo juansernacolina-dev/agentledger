@@ -1,14 +1,17 @@
 /**
  * Seeds two synthetic workspaces for local development and prints a fresh API
  * token for each demo user. Safe to re-run: records are upserted, existing
- * agent versions are left untouched (they are immutable) and every run issues
- * new tokens. All names and emails are fictional.
+ * agent versions are left untouched (they are immutable), the fixture run's
+ * trace is replayed with its own IDs (so nothing is duplicated) and every run
+ * issues new tokens. All names and emails are fictional.
  */
 import { AgentVersionConfigSchema, type AgentVersionConfig } from "@agentledger/contracts";
 import { PrismaClient, type Prisma, type WorkspaceRole } from "@prisma/client";
 import { hashConfig } from "./agents/config-hash.js";
 import { generateToken, hashToken } from "./auth/tokens.js";
 import { newId } from "./ids.js";
+import { PrismaRunStore, PrismaTraceStore } from "./store/prisma.js";
+import { loadTraceFixture, readTraceFixture } from "./traces/fixture.js";
 
 const workspaces = [
   { id: "ws_acmesupport", slug: "acme-support", name: "Acme Support Agents" },
@@ -106,6 +109,36 @@ async function seedAgents(prisma: PrismaClient) {
   }
 }
 
+/** A finished v1 run replayed from the eight-step refund trace fixture. */
+const fixtureRun = {
+  id: "run_acmerefund8steps",
+  fixture: "refund-eight-steps",
+  createdAt: new Date("2026-01-15T09:00:00.000Z"),
+  startedAt: new Date("2026-01-15T09:00:00.250Z"),
+} as const;
+
+async function seedFixtureRun(prisma: PrismaClient) {
+  const fixture = readTraceFixture(fixtureRun.fixture);
+  const runs = new PrismaRunStore(prisma);
+  const { workspaceId, id: agentId, createdById } = refundAgent;
+  if ((await runs.findRun(workspaceId, fixtureRun.id)) === null) {
+    const version = await prisma.agentVersion.findUniqueOrThrow({ where: { id: refundAgent.versions[0].id } });
+    await runs.createRun({
+      id: fixtureRun.id,
+      version: { id: version.id, workspaceId, agentId, version: version.version },
+      timingSource: "fixture",
+      budget: AgentVersionConfigSchema.parse(version.config).budget,
+      input: fixture.input,
+      createdById,
+      createdAt: fixtureRun.createdAt,
+    });
+  }
+  return loadTraceFixture(
+    { runs, traces: new PrismaTraceStore(prisma) },
+    { workspaceId, runId: fixtureRun.id, fixture, startedAt: fixtureRun.startedAt },
+  );
+}
+
 async function main() {
   const prisma = new PrismaClient();
   try {
@@ -135,8 +168,13 @@ async function main() {
     }
 
     await seedAgents(prisma);
+    const loaded = await seedFixtureRun(prisma);
 
     console.log("Seeded workspaces acme-support, globex-ops and agent refund-assistant (v1, v2).");
+    console.log(
+      `Fixture run ${loaded.run.id} (${fixtureRun.fixture}): ${loaded.run.status}, ` +
+        `${loaded.appended} trace events stored, ${loaded.replayed} already present.`,
+    );
     console.log("Local API tokens:");
     for (const { email, token } of issued) console.log(`  ${email.padEnd(28)} ${token}`);
   } finally {

@@ -1,0 +1,295 @@
+{
+  "contractVersion": 1,
+  "name": "refund-eight-steps",
+  "description": "Synthetic refund request for a damaged order: classify, look up the order (retried once after a timeout), search the policy, check eligibility, pass the approval gate, issue the refund, draft the reply and write an audit note. Contact details, card numbers and credentials are fictional and appear raw so redaction can be tested.",
+  "budget": {
+    "maxSteps": 8,
+    "maxDurationMs": 10000,
+    "maxRetries": 1
+  },
+  "input": {
+    "orderNumber": "A-2048",
+    "channel": "email"
+  },
+  "events": [
+    {
+      "id": "evt_refund8e00",
+      "sequence": 0,
+      "type": "step_started",
+      "stepId": "step_classify",
+      "attempt": 1,
+      "offsetMs": 0,
+      "index": 0,
+      "kind": "model",
+      "name": "Classify request",
+      "input": {
+        "message": "Hello, order A-2048 arrived broken. Please refund it to my card 5555 5555 5555 4444. You can reach me at noor.patel@example.test or +44 20 7946 0958."
+      }
+    },
+    {
+      "id": "evt_refund8e01",
+      "sequence": 1,
+      "type": "step_finished",
+      "stepId": "step_classify",
+      "attempt": 1,
+      "offsetMs": 640,
+      "status": "ok",
+      "output": {
+        "intent": "refund_request",
+        "orderNumber": "A-2048",
+        "reason": "damaged_on_arrival"
+      }
+    },
+    {
+      "id": "evt_refund8e02",
+      "sequence": 2,
+      "type": "step_started",
+      "stepId": "step_lookuporder",
+      "attempt": 1,
+      "offsetMs": 640,
+      "index": 1,
+      "kind": "tool",
+      "name": "Look up order",
+      "tool": "lookup_order",
+      "input": {
+        "orderNumber": "A-2048",
+        "authorization": "Bearer fixture-orders-7Qm2Xc9LpA"
+      }
+    },
+    {
+      "id": "evt_refund8e03",
+      "sequence": 3,
+      "type": "step_finished",
+      "stepId": "step_lookuporder",
+      "attempt": 1,
+      "offsetMs": 940,
+      "status": "error",
+      "error": "order service timed out after 300 ms"
+    },
+    {
+      "id": "evt_refund8e04",
+      "sequence": 4,
+      "type": "step_started",
+      "stepId": "step_lookuporder",
+      "attempt": 2,
+      "offsetMs": 990,
+      "index": 1,
+      "kind": "tool",
+      "name": "Look up order",
+      "tool": "lookup_order",
+      "input": {
+        "orderNumber": "A-2048",
+        "authorization": "Bearer fixture-orders-7Qm2Xc9LpA"
+      }
+    },
+    {
+      "id": "evt_refund8e05",
+      "sequence": 5,
+      "type": "step_finished",
+      "stepId": "step_lookuporder",
+      "attempt": 2,
+      "offsetMs": 1260,
+      "status": "ok",
+      "output": {
+        "order": {
+          "number": "A-2048",
+          "status": "delivered",
+          "deliveredOn": "2026-01-12",
+          "totalMinor": 4999,
+          "currency": "EUR",
+          "customer": {
+            "id": "cus_noorp01",
+            "email": "noor.patel@example.test",
+            "phone": "+44 20 7946 0958",
+            "dateOfBirth": "1990-04-12"
+          },
+          "payment": {
+            "method": "card",
+            "cardNumber": "5555555555554444",
+            "last4": "4444"
+          }
+        }
+      }
+    },
+    {
+      "id": "evt_refund8e06",
+      "sequence": 6,
+      "type": "step_started",
+      "stepId": "step_searchpolicy",
+      "attempt": 1,
+      "offsetMs": 1260,
+      "index": 2,
+      "kind": "retrieval",
+      "name": "Search refund policy",
+      "input": {
+        "query": "damaged item refund window"
+      }
+    },
+    {
+      "id": "evt_refund8e07",
+      "sequence": 7,
+      "type": "step_finished",
+      "stepId": "step_searchpolicy",
+      "attempt": 1,
+      "offsetMs": 1680,
+      "status": "ok",
+      "output": {
+        "articles": [
+          {
+            "id": "kb_damaged_items",
+            "title": "Damaged items",
+            "excerpt": "Items that arrive damaged can be refunded in full within 30 days of delivery."
+          }
+        ]
+      }
+    },
+    {
+      "id": "evt_refund8e08",
+      "sequence": 8,
+      "type": "step_started",
+      "stepId": "step_checkeligibility",
+      "attempt": 1,
+      "offsetMs": 1680,
+      "index": 3,
+      "kind": "model",
+      "name": "Check eligibility",
+      "input": {
+        "orderStatus": "delivered",
+        "daysSinceDelivery": 3,
+        "policyArticle": "kb_damaged_items",
+        "totalMinor": 4999
+      }
+    },
+    {
+      "id": "evt_refund8e09",
+      "sequence": 9,
+      "type": "step_finished",
+      "stepId": "step_checkeligibility",
+      "attempt": 1,
+      "offsetMs": 2410,
+      "status": "ok",
+      "output": {
+        "eligible": true,
+        "refundMinor": 4999,
+        "citation": "kb_damaged_items"
+      }
+    },
+    {
+      "id": "evt_refund8e10",
+      "sequence": 10,
+      "type": "step_started",
+      "stepId": "step_approvalgate",
+      "attempt": 1,
+      "offsetMs": 2410,
+      "index": 4,
+      "kind": "decision",
+      "name": "Approval gate",
+      "input": {
+        "refundMinor": 4999,
+        "autoApproveLimitMinor": 5000
+      }
+    },
+    {
+      "id": "evt_refund8e11",
+      "sequence": 11,
+      "type": "step_finished",
+      "stepId": "step_approvalgate",
+      "attempt": 1,
+      "offsetMs": 2415,
+      "status": "ok",
+      "output": {
+        "requiresHumanApproval": false,
+        "rule": "refund at or below the auto-approve limit"
+      }
+    },
+    {
+      "id": "evt_refund8e12",
+      "sequence": 12,
+      "type": "step_started",
+      "stepId": "step_issuerefund",
+      "attempt": 1,
+      "offsetMs": 2415,
+      "index": 5,
+      "kind": "tool",
+      "name": "Issue refund",
+      "tool": "issue_refund",
+      "input": {
+        "orderNumber": "A-2048",
+        "amountMinor": 4999,
+        "currency": "EUR",
+        "apiKey": "sk-test-fixtureRefunds0123456789",
+        "note": "Refund to card 5555 5555 5555 4444"
+      }
+    },
+    {
+      "id": "evt_refund8e13",
+      "sequence": 13,
+      "type": "step_finished",
+      "stepId": "step_issuerefund",
+      "attempt": 1,
+      "offsetMs": 2890,
+      "status": "ok",
+      "output": {
+        "refundId": "rf_a2048full",
+        "status": "issued"
+      }
+    },
+    {
+      "id": "evt_refund8e14",
+      "sequence": 14,
+      "type": "step_started",
+      "stepId": "step_draftreply",
+      "attempt": 1,
+      "offsetMs": 2890,
+      "index": 6,
+      "kind": "model",
+      "name": "Draft reply",
+      "input": {
+        "to": "noor.patel@example.test",
+        "refundMinor": 4999,
+        "currency": "EUR",
+        "cardLast4": "4444"
+      }
+    },
+    {
+      "id": "evt_refund8e15",
+      "sequence": 15,
+      "type": "step_finished",
+      "stepId": "step_draftreply",
+      "attempt": 1,
+      "offsetMs": 5170,
+      "status": "ok",
+      "output": {
+        "subject": "Your refund for order A-2048",
+        "body": "Hello, we are sorry your order arrived damaged. A refund of 49.99 EUR is on its way to the card ending in 4444 and should arrive within 5 business days."
+      }
+    },
+    {
+      "id": "evt_refund8e16",
+      "sequence": 16,
+      "type": "step_started",
+      "stepId": "step_auditsummary",
+      "attempt": 1,
+      "offsetMs": 5170,
+      "index": 7,
+      "kind": "model",
+      "name": "Write audit note",
+      "input": {
+        "refundId": "rf_a2048full",
+        "contact": "noor.patel@example.test"
+      }
+    },
+    {
+      "id": "evt_refund8e17",
+      "sequence": 17,
+      "type": "step_finished",
+      "stepId": "step_auditsummary",
+      "attempt": 1,
+      "offsetMs": 5630,
+      "status": "ok",
+      "output": {
+        "note": "Refunded 49.99 EUR in full for A-2048 under kb_damaged_items; customer notified at noor.patel@example.test."
+      }
+    }
+  ]
+}

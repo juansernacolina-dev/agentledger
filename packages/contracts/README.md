@@ -59,10 +59,29 @@ Redaction is deterministic and idempotent, never changes its input, and
 reports the path of every replacement. JSON numbers are not scanned: a card or
 phone number sent as a number is only caught by its field name.
 
+## Trace fixtures
+
+A trace fixture is a recorded run that can be replayed without a model key:
+`{ contractVersion, name, description, budget, input, events }`, with events
+written as a worker reports them. `parseTraceFixture(input)` validates the
+envelope and every event, redacts the events, checks them with `checkTrace`
+against the fixture's budget and returns `{ ok, fixture }` (redacted `events`
+plus `stepIds`) or `{ ok: false, issues }`. Event and step IDs come from the
+file, so every load gives the same events. The package exports the files as
+`@agentledger/contracts/fixtures/*`.
+
+`fixtures/traces/refund-eight-steps.json` is a synthetic refund request in
+eight steps (model, tool, retrieval and decision steps; the order lookup is
+retried once after a timeout). It deliberately contains fictional emails, a
+phone number, card numbers, a date of birth, a bearer token and an API key;
+`test/trace-fixture.test.ts` checks that none of them survives redaction and
+lists every redacted path.
+
 ## Fixtures
 
 `fixtures/runs/valid-*.json` must parse; each `invalid-*.json` must fail with
-the issue listed in `test/run.test.ts`.
+the issue listed in `test/run.test.ts`. `fixtures/traces/*.json` must load
+with `parseTraceFixture`.
 
 ```sh
 pnpm --filter @agentledger/contracts test
